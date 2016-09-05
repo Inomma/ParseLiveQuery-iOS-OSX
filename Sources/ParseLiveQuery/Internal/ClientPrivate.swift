@@ -20,30 +20,24 @@ private func parseObject<T: PFObject>(objectDictionary: [String:AnyObject]) thro
         throw LiveQueryErrors.InvalidJSONError(json: objectDictionary, expectedKey: "objectId")
     }
 
-    let parseObject = T(withoutDataWithClassName: parseClassName, objectId: objectId)
-
-    // Map of strings to closures to determine if the key is valid. Allows for more advanced checking of
-    // classnames and such.
-    let invalidKeys: [String:Void->Bool] = [
-        "objectId": { true },
-        "parseClassName": { true },
-        "sessionToken": { parseClassName == "_User" }
-    ]
-
-    objectDictionary.filter { key, _ in
-        return !(invalidKeys[key].map { $0() } ?? false)
-    }.forEach { key, value in
-        parseObject[key] = value
+    let object = T(withoutDataWithClassName: parseClassName, objectId: objectId)
+    try objectDictionary.filter { key, _ in
+        key != "parseClassName" && key != "objectId"
+        }.forEach { key, value in
+            if let valueDictionary = value as? [String:AnyObject] {
+                try parseObject(valueDictionary) }
+            else { object[key] = value }
     }
-    return parseObject
+
+    return object
 }
 
 // ---------------
 // MARK: Subscriptions
 // ---------------
 
-extension Client {
-    class SubscriptionRecord {
+internal extension Client {
+    internal class SubscriptionRecord {
         weak var subscriptionHandler: AnyObject?
 
         // HandlerClosure captures the generic type info passed into the constructor of SubscriptionRecord,
@@ -108,10 +102,10 @@ extension Client {
 
     // An opaque placeholder structed used to ensure that we type-safely create request IDs and don't shoot ourself in
     // the foot with array indexes.
-    struct RequestId: Equatable {
-        let value: Int
+    internal struct RequestId: Equatable {
+        internal let value: Int
 
-        init(value: Int) {
+        internal init(value: Int) {
             self.value = value
         }
     }
@@ -134,7 +128,7 @@ extension Client: SRWebSocketDelegate {
     public func webSocket(webSocket: SRWebSocket!, didFailWithError error: NSError!) {
         print("Error: \(error)")
 
-        if !userDisconnected {
+        if !disconnected {
             reconnect()
         }
     }
@@ -143,7 +137,7 @@ extension Client: SRWebSocketDelegate {
         print("code: \(code) reason: \(reason)")
 
         // TODO: Better retry logic, unless `disconnect()` was explicitly called
-        if !userDisconnected {
+        if !disconnected {
             reconnect()
         }
     }
@@ -164,7 +158,7 @@ extension Client: SRWebSocketDelegate {
 // MARK: Operations
 // -------------------
 
-extension Event {
+internal extension Event {
     init(serverResponse: ServerResponse, inout requestId: Client.RequestId) throws {
         switch serverResponse {
         case .Enter(let reqId, let object):
@@ -192,7 +186,7 @@ extension Event {
     }
 }
 
-extension Client {
+internal extension Client {
     private func subscriptionRecord(requestId: RequestId) -> SubscriptionRecord? {
         guard
             let recordIndex = self.subscriptions.indexOf({ $0.requestId == requestId }),
@@ -204,7 +198,7 @@ extension Client {
         return record
     }
 
-    func sendOperationAsync(operation: ClientOperation) -> Task<Void> {
+    internal func sendOperationAsync(operation: ClientOperation) -> Task<Void> {
         return Task(.Queue(queue)) {
             let jsonEncoded = operation.JSONObjectRepresentation
             let jsonData = try NSJSONSerialization.dataWithJSONObject(jsonEncoded, options: NSJSONWritingOptions(rawValue: 0))
@@ -214,7 +208,7 @@ extension Client {
         }
     }
 
-    func handleOperationAsync(string: String) -> Task<Void> {
+    internal func handleOperationAsync(string: String) -> Task<Void> {
         return Task(.Queue(queue)) {
             guard
                 let jsonData = string.dataUsingEncoding(NSUTF8StringEncoding),

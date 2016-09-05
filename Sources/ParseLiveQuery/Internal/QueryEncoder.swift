@@ -13,39 +13,37 @@ import Parse
 /**
  NOTE: This is super hacky, and we need a better answer for this.
  */
-extension Dictionary where Key: StringLiteralConvertible, Value: AnyObject {
-    init(query: PFQuery) {
+internal extension Dictionary where Key: StringLiteralConvertible, Value: AnyObject {
+    internal init(query: PFQuery) {
         self.init()
+
         let queryState = query.valueForKey("state")
         if let className = queryState?.valueForKey("parseClassName") {
             self["className"] = className as? Value
         }
-        if let conditions: [String:AnyObject] = queryState?.valueForKey("conditions") as? [String:AnyObject] {
-            self["where"] = conditions.encodedQueryDictionary as? Value
-        }
-    }
-}
-
-extension Dictionary where Key: StringLiteralConvertible, Value: AnyObject {
-    var encodedQueryDictionary: Dictionary {
-        var encodedQueryDictionary = Dictionary()
-        for (key, val) in self {
-            if let dict = val as? [String:AnyObject] {
-                encodedQueryDictionary[key] = dict.encodedQueryDictionary as? Value
-            } else if let geoPoint = val as? PFGeoPoint {
-                encodedQueryDictionary[key] = geoPoint.encodedDictionary as? Value
-            } else {
-                encodedQueryDictionary[key] = val
+        let objectDictionary = { (object:PFObject)->[String:String] in
+            return ["__type":"Pointer","className": object.parseClassName,"objectId": object.objectId!] }
+        var valueBlock:((AnyObject)->AnyObject?)!
+        valueBlock = {(value:AnyObject)->AnyObject? in
+            if let value = value as? PFObject {
+                return objectDictionary(value) }
+            if let value = value as? [String:AnyObject] {
+                guard let (key,value) = value.first else {
+                    fatalError("Value is bad formatted.")
+                    return nil}
+                guard let optional = valueBlock(value) else {
+                    fatalError("Value is bad formatted.")
+                    return nil}
+                return [key: optional] }
+            return value }
+        
+        if let rawConditions: [String:AnyObject] = queryState?.valueForKey("conditions") as? [String:AnyObject] {
+            var formattedConditions = [String: AnyObject]()
+            let keys = rawConditions.keys
+            for (key,value) in rawConditions {
+                formattedConditions[key] = valueBlock(value)
             }
+            self["where"] = formattedConditions as? Value
         }
-        return encodedQueryDictionary
-    }
-}
-
-extension PFGeoPoint {
-    var encodedDictionary: [String:AnyObject] {
-        return ["__type": "GeoPoint",
-                "latitude": latitude,
-                "longitude": longitude]
     }
 }

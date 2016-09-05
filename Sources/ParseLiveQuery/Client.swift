@@ -12,25 +12,26 @@ import Parse
 import BoltsSwift
 import SocketRocket
 
+
 /**
  This is the 'advanced' view of live query subscriptions. It allows you to customize your subscriptions
  to a live query server, have connections to multiple servers, cleanly handle disconnect and reconnect.
  */
 @objc(PFLiveQueryClient)
 public class Client: NSObject {
-    let host: NSURL
-    let applicationId: String
-    let clientKey: String?
+    internal let host: NSURL
+    internal let applicationId: String
+    internal let clientKey: String?
 
-    var socket: SRWebSocket?
-    var userDisconnected = false
+    internal var socket: SRWebSocket?
+    internal var disconnected = false
 
     // This allows us to easily plug in another request ID generation scheme, or more easily change the request id type
     // if needed (technically this could be a string).
-    let requestIdGenerator: () -> RequestId
-    var subscriptions = [SubscriptionRecord]()
+    internal let requestIdGenerator: () -> RequestId
+    internal var subscriptions = [SubscriptionRecord]()
 
-    let queue = dispatch_queue_create("com.parse.livequery", DISPATCH_QUEUE_SERIAL)
+    internal let queue = dispatch_queue_create("com.parse.livequery", DISPATCH_QUEUE_SERIAL)
 
     /**
      Creates a Client which automatically attempts to connect to the custom parse-server URL set in Parse.currentConfiguration().
@@ -50,7 +51,7 @@ public class Client: NSObject {
         guard let components = NSURLComponents(string: server) else {
             fatalError("Server should be a valid URL.")
         }
-        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.scheme = "wss"
 
         // Simple incrementing generator - can't use ++, that operator is deprecated!
         var currentRequestId = 0
@@ -118,7 +119,7 @@ extension Client {
 
      - parameter query:        The query to register for updates.
      - parameter subclassType: The subclass of PFObject to be used as the type of the Subscription.
-     This parameter can be automatically inferred from context most of the time
+                               This parameter can be automatically inferred from context most of the time
 
      - returns: The subscription that has just been registered
      */
@@ -126,7 +127,7 @@ extension Client {
         query: PFQuery,
         subclassType: T.Type = T.self
         ) -> Subscription<T> {
-        return subscribe(query, handler: Subscription<T>())
+            return subscribe(query, handler: Subscription<T>())
     }
 
     /**
@@ -141,24 +142,22 @@ extension Client {
         query: PFQuery,
         handler: T
         ) -> T {
-        let subscriptionRecord = SubscriptionRecord(
-            query: query,
-            requestId: requestIdGenerator(),
-            handler: handler
-        )
-        subscriptions.append(subscriptionRecord)
-        
-        if socket?.readyState == .OPEN {
-            sendOperationAsync(.Subscribe(requestId: subscriptionRecord.requestId, query: query))
-        } else if socket == nil || socket?.readyState != .CONNECTING {
-            if !userDisconnected {
-                reconnect()
+            let subscriptionRecord = SubscriptionRecord(
+                query: query,
+                requestId: requestIdGenerator(),
+                handler: handler
+            )
+            subscriptions.append(subscriptionRecord)
+
+            if socket == nil {
+                if !disconnected {
+                    reconnect()
+                }
             } else {
-                debugPrint("Warning: The client was explicitly disconnected! You must explicitly call .reconnect() in order to process your subscriptions.")
+                sendOperationAsync(.Subscribe(requestId: subscriptionRecord.requestId, query: query))
             }
-        }
-        
-        return handler
+
+            return handler
     }
 
     /**
@@ -181,14 +180,13 @@ extension Client {
         unsubscribe { $0.query == query && $0.subscriptionHandler === handler }
     }
 
-    func unsubscribe(@noescape matching matcher: SubscriptionRecord -> Bool) {
+    internal func unsubscribe(@noescape matching matcher: SubscriptionRecord -> Bool) {
         subscriptions.filter {
             matcher($0)
-            }.forEach {
-                sendOperationAsync(.Unsubscribe(requestId: $0.requestId))
+        }.forEach {
+            sendOperationAsync(.Unsubscribe(requestId: $0.requestId))
         }
     }
-    
 }
 
 extension Client {
@@ -201,11 +199,12 @@ extension Client {
     public func reconnect() {
         socket?.close()
         socket = {
+            print(host)
             let socket = SRWebSocket(URL: host)
             socket.delegate = self
             socket.setDelegateDispatchQueue(queue)
             socket.open()
-            userDisconnected = false
+
             return socket
             }()
     }
@@ -223,6 +222,6 @@ extension Client {
         }
         socket.close()
         self.socket = nil
-        userDisconnected = true
+        disconnected = true
     }
 }

@@ -10,7 +10,7 @@
 import Foundation
 import Parse
 
-enum ClientOperation {
+internal enum ClientOperation {
     case Connect(applicationId: String, sessionToken: String)
     case Subscribe(requestId: Client.RequestId, query: PFQuery)
     case Unsubscribe(requestId: Client.RequestId)
@@ -29,7 +29,7 @@ enum ClientOperation {
     }
 }
 
-enum ServerResponse {
+internal enum ServerResponse {
     case Redirect(url: String)
     case Connected()
 
@@ -44,7 +44,7 @@ enum ServerResponse {
 
     case Error(requestId: Client.RequestId?, code: Int, error: String, reconnect: Bool)
 
-    init(json: [String : AnyObject]) throws {
+    internal init(json: [String : AnyObject]) throws {
         func jsonValue<T>(json: [String:AnyObject], _ key: String) throws -> T {
             guard let value =  json[key] as? T
                 else {

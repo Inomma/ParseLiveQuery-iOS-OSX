@@ -18,7 +18,7 @@ import BoltsSwift
  */
 public protocol SubscriptionHandling: AnyObject {
     /// The type of the PFObject subclass that this handler uses.
-    associatedtype PFObjectSubclass: PFObject
+    typealias PFObjectSubclass: PFObject
 
     /**
      Tells the handler that an event has been received from the live query server.
@@ -84,7 +84,7 @@ public enum Event<T where T: PFObject> {
     /// The object has been deleted, and is no longer included in the query
     case Deleted(T)
 
-    init<V where V: PFObject>(event: Event<V>) {
+    internal init<V where V: PFObject>(event: Event<V>) {
         switch event {
         case .Entered(let value as T): self = .Entered(value)
         case .Left(let value as T):    self = .Left(value)
